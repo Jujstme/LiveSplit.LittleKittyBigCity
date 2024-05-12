@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-asr = { path = "../../source/repos/asr", features = ["unity", "derive"] } # asr = { git = "https://github.com/LiveSplit/asr", features = ["unity", "derive"] }
+asr = { path = "../../../source/repos/asr", features = ["unity", "derive"] } # asr = { git = "https://github.com/LiveSplit/asr", features = ["unity", "derive"] }
 bytemuck = "1.15.0"
 lol_alloc = "0.4.1"
 
