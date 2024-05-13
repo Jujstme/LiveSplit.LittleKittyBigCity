@@ -1,4 +1,5 @@
 #![no_std]
+#![feature(type_alias_impl_trait, const_async_blocks)]
 #![warn(
     clippy::complexity,
     clippy::correctness,
@@ -9,7 +10,9 @@
 )]
 
 extern crate alloc;
-use core::slice;
+
+#[global_allocator]
+static ALLOC: dlmalloc::GlobalDlmalloc = dlmalloc::GlobalDlmalloc;
 
 use alloc::vec::Vec;
 use asr::{
@@ -25,18 +28,10 @@ use asr::{
     watcher::Watcher,
     Address64, Process,
 };
-use bytemuck::CheckedBitPattern;
-
-#[cfg(target_arch = "wasm32")]
-use lol_alloc::{FreeListAllocator, LockedAllocator};
-
-#[cfg(target_arch = "wasm32")]
-#[global_allocator]
-static ALLOCATOR: LockedAllocator<FreeListAllocator> =
-    LockedAllocator::new(FreeListAllocator::new());
+use bytemuck::{Pod, Zeroable};
 
 asr::panic_handler!();
-asr::async_main!(stable);
+asr::async_main!(nightly);
 
 const PROCESS_NAMES: &[&str] = &["Little Kitty, Big City.exe"];
 
@@ -214,6 +209,8 @@ struct Memory {
     is_outro: UnityPointer<2>,
     quest_list: UnityPointer<2>,
     post_eat: UnityPointer<2>,
+    offset_achievement_id: u32,
+    // offset_achievement_completed: u32,
 }
 
 impl Memory {
@@ -234,6 +231,13 @@ impl Memory {
         let quest_list = UnityPointer::new("Journal", 0, &["achievementMaster", "0"]);
         let post_eat = UnityPointer::new("CatPlayer", 0, &["_instance", "isPostEating"]);
 
+        let offset_achievement_id = mono_image
+            .wait_get_class(game, &mono_module, "Achievement")
+            .await
+            .wait_get_field_offset(game, &mono_module, "id")
+            .await;
+        // let offset_achievement_completed = achievement_class.wait_get_field_offset(game, &mono_module, "_completed").await;
+
         asr::print_limited::<24>(&"  => Autosplitter ready!");
 
         Self {
@@ -246,6 +250,8 @@ impl Memory {
             is_outro,
             quest_list,
             post_eat,
+            offset_achievement_id,
+            // offset_achievement_completed,
         }
     }
 }
@@ -257,15 +263,14 @@ fn update_loop(game: &Process, memory: &Memory, watchers: &mut Watchers) {
         memory
             .post_eat
             .deref::<u8>(game, &memory.mono_module, &memory.mono_image)
-            .unwrap_or_default()
-            != 0,
+            .is_ok_and(|val| val != 0),
     );
+
     watchers.allow_player_shake.update_infallible(
         memory
             .trashcan_allow_shake
             .deref::<u8>(game, &memory.mono_module, &memory.mono_image)
-            .unwrap_or_default()
-            != 0,
+            .is_ok_and(|val| val != 0),
     );
 
     watchers.start_trigger.update_infallible(
@@ -300,54 +305,47 @@ fn update_loop(game: &Process, memory: &Memory, watchers: &mut Watchers) {
     );
 
     watchers.quest_list.update_infallible({
-        #[derive(Copy, Clone, CheckedBitPattern)]
+        #[derive(Copy, Clone, Pod, Zeroable)]
         #[repr(C)]
         struct List {
             _padding: [u8; 0x10],
             items: Address64,
             size: u32,
+            _padding2: [u8; 4],
         }
 
-        #[derive(Copy, Clone, CheckedBitPattern)]
+        #[derive(Copy, Clone, Pod, Zeroable)]
         #[repr(C)]
         struct QuestInternal {
-            _padding: [u8; 0x48],
             id: u32,
             _padding1: [u8; 17],
             completed: u8,
+            _padding2: [u8; 2],
         }
 
         match memory
             .quest_list
             .deref::<List>(game, &memory.mono_module, &memory.mono_image)
-        {
-            Ok(list_data) => {
-                let mut items = Vec::<Address64>::with_capacity(list_data.size as usize);
-
-                let slice =
-                    unsafe { slice::from_raw_parts_mut(items.as_mut_ptr(), items.capacity()) };
-
-                unsafe { items.set_len(items.capacity()) };
-
-                match game.read_into_slice(list_data.items + 0x20, slice) {
-                    Ok(_) => {
-                        let mut data = Vec::with_capacity(list_data.size as usize);
-
-                        for i in items {
-                            if let Ok(internal_data) = game.read::<QuestInternal>(i) {
-                                data.push(QuestData {
-                                    quest_id: internal_data.id,
-                                    complete: internal_data.completed != 0,
-                                });
-                            }
-                        }
-
-                        data
-                    }
-                    _ => Vec::new(),
-                }
-            }
-            _ => Vec::new(),
+            .ok()
+            .map(|list_data| {
+                game.read_vec::<Address64>(list_data.items + 0x20, list_data.size as usize)
+                    .ok()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(|&item| {
+                                game.read::<QuestInternal>(item + memory.offset_achievement_id)
+                                    .ok()
+                                    .map(|val| QuestData {
+                                        quest_id: val.id,
+                                        complete: val.completed != 0,
+                                    })
+                            })
+                            .collect()
+                    })
+            }) {
+            Some(Some(x)) => x,
+            _ => Vec::with_capacity(0),
         }
     });
 }
@@ -371,10 +369,7 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
         let mut value = false;
 
         if let Some(quest) = &watchers.quest_list.pair {
-            let current: &Vec<QuestData> = &quest.current;
-            let old = &quest.old;
-
-            for i in current {
+            for i in &quest.current {
                 let quest_id = i.quest_id;
 
                 let split_setting = match quest_id {
@@ -403,13 +398,13 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
                 };
 
                 if split_setting {
-                    let current = current.iter().find(|&val| val.quest_id.eq(&quest_id));
+                    let old = quest
+                        .old
+                        .iter()
+                        .find(|&val| val.quest_id.eq(&quest_id))
+                        .map(|val| val.complete);
 
-                    let old = old.iter().find(|&val| val.quest_id.eq(&quest_id));
-
-                    if old.is_some_and(|val| !val.complete)
-                        && current.is_some_and(|val| val.complete)
-                    {
+                    if old.is_some_and(|val| !val) && i.complete {
                         value = true;
                         break;
                     }
