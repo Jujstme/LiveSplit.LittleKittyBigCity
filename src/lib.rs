@@ -32,7 +32,8 @@ use lol_alloc::{FreeListAllocator, LockedAllocator};
 
 #[cfg(target_arch = "wasm32")]
 #[global_allocator]
-static ALLOCATOR: LockedAllocator<FreeListAllocator> = LockedAllocator::new(FreeListAllocator::new());
+static ALLOCATOR: LockedAllocator<FreeListAllocator> =
+    LockedAllocator::new(FreeListAllocator::new());
 
 asr::panic_handler!();
 asr::async_main!(stable);
@@ -120,9 +121,69 @@ struct Settings {
     got_home: bool,
     /// Quest list
     quests: Title,
-    /// Split on completion of any quest
-    #[default = false]
-    any_quest: bool,
+    /// Find the crow
+    #[default = true]
+    find_crow: bool,
+    /// Bring crow 25 shinies
+    #[default = true]
+    bring_crow_25_shinies: bool,
+    /// Become an artist
+    #[default = true]
+    become_artist: bool,
+    /// Catch a bird
+    #[default = true]
+    catch_a_bird: bool,
+    /// Help the Mayor get some sleep
+    #[default = true]
+    help_mayor: bool,
+    /// Rescue the tanuki from the pipe
+    #[default = true]
+    rescue_tanuki: bool,
+    /// Reunite the duckling family
+    #[default = true]
+    reunite_the_family: bool,
+    /// Fetch 3 feathers for the tanuki
+    #[default = true]
+    fetch_3_feathers: bool,
+    /// Pose for Beetle
+    #[default = true]
+    pose_for_beetle: bool,
+    /// Fetch the dog's balls
+    #[default = true]
+    fetch_dog_balls: bool,
+    /// Find Chameleon
+    #[default = true]
+    find_chameleon_1: bool,
+    /// Find Chameleon... again!
+    #[default = true]
+    find_chameleon_2: bool,
+    /// Find Chameleon, part III
+    #[default = true]
+    find_chameleon_3: bool,
+    /// Find Chameleon: Episode 4
+    #[default = true]
+    find_chameleon_4: bool,
+    /// Find Chameleon: 5IVE!
+    #[default = true]
+    find_chameleon_5: bool,
+    /// Chameleon 6: Find and Furious
+    #[default = true]
+    find_chameleon_6: bool,
+    /// Find Chameleon: Chapter 7
+    #[default = true]
+    find_chameleon_7: bool,
+    /// Find Chameleon: The Return of Chaml
+    #[default = true]
+    find_chameleon_8: bool,
+    /// Steal the gardener's lunch
+    #[default = true]
+    steal_lunch: bool,
+    /// Boss Cat vs. Ramune!
+    #[default = true]
+    catch_yellow_bird: bool,
+    /// Waiting on a sumbeam
+    #[default = true]
+    sunbeam: bool,
 }
 
 #[derive(Default)]
@@ -306,49 +367,52 @@ fn split(watchers: &Watchers, settings: &Settings) -> bool {
             .pair
             .is_some_and(|val| val.changed_to(&true));
 
-    let quest_list = settings.any_quest && {
+    let quest_list = {
         let mut value = false;
 
         if let Some(quest) = &watchers.quest_list.pair {
             let current: &Vec<QuestData> = &quest.current;
             let old = &quest.old;
 
-            /*
-            let quest_ids: [u8; 5] = [58, 15, 3, 4, 5];
-
-            for i in quest_ids {
-                let current = current
-                    .iter()
-                    .find(|&val| val.quest_id.eq(&i))
-                    .map(|val| val.complete);
-                let old = old
-                    .iter()
-                    .find(|&val| val.quest_id.eq(&i))
-                    .map(|val| val.complete);
-
-                if old.is_some_and(|val| !val) && current.is_some_and(|val| val) {
-                    value = true;
-                    break;
-                }
-            }
-            */
-
             for i in current {
                 let quest_id = i.quest_id;
 
-                let current = current
-                    .iter()
-                    .find(|&val| val.quest_id.eq(&quest_id))
-                    .map(|val| val.complete);
+                let split_setting = match quest_id {
+                    32 => settings.find_crow,
+                    19 => settings.bring_crow_25_shinies,
+                    34 => settings.become_artist,
+                    8 => settings.catch_a_bird,
+                    29 => settings.help_mayor,
+                    21 => settings.rescue_tanuki,
+                    28 => settings.reunite_the_family,
+                    24 => settings.fetch_3_feathers,
+                    49 => settings.pose_for_beetle,
+                    12 => settings.fetch_dog_balls,
+                    36 => settings.find_chameleon_1,
+                    37 => settings.find_chameleon_2,
+                    38 => settings.find_chameleon_3,
+                    41 => settings.find_chameleon_4,
+                    42 => settings.find_chameleon_5,
+                    43 => settings.find_chameleon_6,
+                    44 => settings.find_chameleon_7,
+                    45 => settings.find_chameleon_8,
+                    47 => settings.steal_lunch,
+                    56 => settings.catch_yellow_bird,
+                    39 => settings.sunbeam,
+                    _ => false,
+                };
 
-                let old = old
-                    .iter()
-                    .find(|&val| val.quest_id.eq(&quest_id))
-                    .map(|val| val.complete);
+                if split_setting {
+                    let current = current.iter().find(|&val| val.quest_id.eq(&quest_id));
 
-                if old.is_some_and(|val| !val) && current.is_some_and(|val| val) {
-                    value = true;
-                    break;
+                    let old = old.iter().find(|&val| val.quest_id.eq(&quest_id));
+
+                    if old.is_some_and(|val| !val.complete)
+                        && current.is_some_and(|val| val.complete)
+                    {
+                        value = true;
+                        break;
+                    }
                 }
             }
         }
