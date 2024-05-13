@@ -327,24 +327,24 @@ fn update_loop(game: &Process, memory: &Memory, watchers: &mut Watchers) {
             .quest_list
             .deref::<List>(game, &memory.mono_module, &memory.mono_image)
             .ok()
-            .map(|list_data| {
+            .and_then(|list_data| {
                 game.read_vec::<Address64>(list_data.items + 0x20, list_data.size as usize)
                     .ok()
-                    .map(|items| {
-                        items
-                            .iter()
-                            .filter_map(|&item| {
-                                game.read::<QuestInternal>(item + memory.offset_achievement_id)
-                                    .ok()
-                                    .map(|val| QuestData {
-                                        quest_id: val.id,
-                                        complete: val.completed != 0,
-                                    })
+            })
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|&item| {
+                        game.read::<QuestInternal>(item + memory.offset_achievement_id)
+                            .ok()
+                            .map(|val| QuestData {
+                                quest_id: val.id,
+                                complete: val.completed != 0,
                             })
-                            .collect()
                     })
+                    .collect()
             }) {
-            Some(Some(x)) => x,
+            Some(x) => x,
             _ => Vec::with_capacity(0),
         }
     });
