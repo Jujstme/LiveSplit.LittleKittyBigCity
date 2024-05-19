@@ -14,11 +14,12 @@ pub(super) struct Memory {
     pub(super) is_loading_save: UnityPointer<2>,
     pub(super) is_teleporting: UnityPointer<2>,
     pub(super) is_outro: UnityPointer<2>,
-    pub(super) quest_list: UnityPointer<2>,
+    pub(super) quest_list: UnityPointer<1>,
+    pub(super) quest_secondary_list: UnityPointer<1>,
 
     pub(super) post_eat: UnityPointer<2>,
-    pub(super) offset_achievement_id: u32,
-    // offset_achievement_completed: u32,
+    pub(super) offset_achievement_id: usize,
+    pub(super) offset_achievement_completed: usize,
 }
 
 impl Memory {
@@ -47,15 +48,20 @@ impl Memory {
             UnityPointer::new("CatSaveSystemManager", 0, &["_instance", "_isLoading"]);
         let is_teleporting = UnityPointer::new("CatPlayer", 0, &["_instance", "isTeleporting"]);
         let is_outro = UnityPointer::new("CatGameManager", 0, &["_instance", "isInOutro"]);
-        let quest_list = UnityPointer::new("Journal", 0, &["achievementMaster", "0"]);
+        let quest_list = UnityPointer::new("Journal", 0, &["achievementMaster"]);
+        let quest_secondary_list = UnityPointer::new("Journal", 0, &["achievementSecondary"]);
         let post_eat = UnityPointer::new("CatPlayer", 0, &["_instance", "isPostEating"]);
 
-        let offset_achievement_id = mono_image
+        let achievement_class = mono_image
             .wait_get_class(game, &mono_module, "Achievement")
-            .await
-            .wait_get_field_offset(game, &mono_module, "id")
             .await;
-        // let offset_achievement_completed = achievement_class.wait_get_field_offset(game, &mono_module, "_completed").await;
+
+        let offset_achievement_id = achievement_class
+            .wait_get_field_offset(game, &mono_module, "id")
+            .await as usize;
+        let offset_achievement_completed = achievement_class
+            .wait_get_field_offset(game, &mono_module, "_completed")
+            .await as usize;
         asr::print_message("    => Done!");
 
         asr::print_limited::<24>(&" => Autosplitter ready!");
@@ -69,9 +75,10 @@ impl Memory {
             is_teleporting,
             is_outro,
             quest_list,
+            quest_secondary_list,
             post_eat,
             offset_achievement_id,
-            // offset_achievement_completed,
+            offset_achievement_completed,
         }
     }
 }

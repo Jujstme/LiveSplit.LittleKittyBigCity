@@ -27,6 +27,7 @@ mod mono;
 mod process;
 mod scene_manager;
 mod settings;
+mod csharp;
 
 asr::panic_handler!();
 asr::async_main!(stable);
